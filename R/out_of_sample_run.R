@@ -108,7 +108,7 @@ all_rows_run <- sapply(1:n_rows, function(row){
                       row = all_runs$row),
             FUN = mean)
   
-  write.csv(this_row_results, paste("output/oos_values_row", row, n_runs, "runs.csv", sep = "_"), row.names = FALSE)
+  write.csv(this_row_results, paste("output/out_of_sample/oos_values_row", row, n_runs, "runs.csv", sep = "_"), row.names = FALSE)
   
   
 }, simplify = FALSE)
