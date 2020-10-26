@@ -64,17 +64,25 @@ all_rows_run <- sapply(1:nrow(possible_combinations), function(row){
   
   colnames(all_in_sample_auc) <- c("low_auc", "mid_auc", "high_auc")
   
-  data.frame(row = row, updated_row_use, data.frame(type = row.names(all_in_sample_auc), all_in_sample_auc,
-                          stringsAsFactors = FALSE),
-             stringsAsFactors = FALSE)
+  list(df = data.frame(row = row, updated_row_use, data.frame(type = row.names(all_in_sample_auc), all_in_sample_auc,
+                                                              stringsAsFactors = FALSE), stringsAsFactors = FALSE),
+       predictions = data.frame(row = row, updated_row_use, all_predictions, stringsAsFactors = FALSE),
+       variable_importance = data.frame(row = row, updated_row_use, t(data.frame(model_run$variable.importance)), stringsAsFactors = FALSE))
   
 }, simplify = FALSE)
 
-all_done <- do.call(rbind, all_rows_run)
+dataframe_all <- do.call(rbind, sapply(1:length(all_rows_run), function(x) all_rows_run[[x]][[1]], simplify = FALSE))
+predictions_all <- do.call(rbind, sapply(1:length(all_rows_run), function(x) all_rows_run[[x]][[2]], simplify = FALSE))
+variable_importance_all <- do.call(rbind.fill, sapply(1:length(all_rows_run), function(x) all_rows_run[[x]][[3]], simplify = FALSE))
 
-ggplot(data = all_done, aes(x = row, y = mid_auc, color = type)) + geom_point() +
-  theme_minimal() + labs(x = "Row", y = "auc", color = "Type") +
-  geom_errorbar(aes(ymin = low_auc, ymax = high_auc))
+write.csv(dataframe_all, "output/in_sample_dataframe_all.csv", row.names = FALSE)
+write.csv(predictions_all, "output/predictions_all.csv", row.names = FALSE)
+write.csv(variable_importance_all, "output/variable_importance_all.csv", row.names = FALSE)
+
+
+
+
+
 
 
 
