@@ -8,6 +8,7 @@ library(rgeos)
 library(plyr)
 library(pdp)
 library(ggplot2)
+library(tidyr)
 
 set.seed(1)
 
@@ -66,7 +67,7 @@ all_rows_run <- sapply(1:nrow(possible_combinations), function(row){
   
   list(df = data.frame(row = row, updated_row_use, data.frame(type = row.names(all_in_sample_auc), all_in_sample_auc,
                                                               stringsAsFactors = FALSE), stringsAsFactors = FALSE),
-       predictions = data.frame(row = row, updated_row_use, all_predictions, stringsAsFactors = FALSE),
+       predictions = data.frame(row = row, all_predictions, stringsAsFactors = FALSE),
        variable_importance = data.frame(row = row, updated_row_use, t(data.frame(model_run$variable.importance)), stringsAsFactors = FALSE))
   
 }, simplify = FALSE)
@@ -75,9 +76,15 @@ dataframe_all <- do.call(rbind, sapply(1:length(all_rows_run), function(x) all_r
 predictions_all <- do.call(rbind, sapply(1:length(all_rows_run), function(x) all_rows_run[[x]][[2]], simplify = FALSE))
 variable_importance_all <- do.call(rbind.fill, sapply(1:length(all_rows_run), function(x) all_rows_run[[x]][[3]], simplify = FALSE))
 
-write.csv(dataframe_all, "output/in_sample_dataframe_all.csv", row.names = FALSE)
-write.csv(predictions_all, "output/predictions_all.csv", row.names = FALSE)
-write.csv(variable_importance_all, "output/variable_importance_all.csv", row.names = FALSE)
+variable_importance_all_long <- gather(variable_importance_all, covariate, importance, Amendoim_em_casca_num_farm:delay_2_EVI, factor_key = T)
+
+predictions_all$month <- model_run_data$month
+predictions_all_long <- gather(predictions_all, type, prediction, none:NHP, factor_key = T)
+
+
+fwrite(dataframe_all, "output/in_sample_dataframe_all.csv", row.names = FALSE)
+fwrite(predictions_all_long[which(predictions_all_long$type != "none"), ], "output/predictions_all.csv", row.names = FALSE)
+fwrite(variable_importance_all_long, "output/variable_importance_all.csv", row.names = FALSE)
 
 
 
