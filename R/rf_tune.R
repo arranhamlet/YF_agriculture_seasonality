@@ -9,7 +9,6 @@ library(plyr)
 library(pdp)
 library(ggplot2)
 library(tidyr)
-library(mlr)
 
 set.seed(1)
 
@@ -28,20 +27,22 @@ for(i in names(model_run_data)[grepl("plant|harvest", names(model_run_data))]){
 }
 
 #Run for all rows
-all_rows_run <- sapply(1:nrow(possible_combinations), function(row){
+all_rows_run <- sapply(2:nrow(possible_combinations), function(row){
   
   print(row)
   
+  
+  #Select covariates
+  updated_row_use <- possible_combinations[row, ]
+  all_covariates_use <- as.character(na.omit(unlist(sapply(1:ncol(covariate_categories), function(x) covariate_categories[, x], simplify = FALSE)[which(updated_row_use %in% 1)])))
+  
   hyper_grid <- expand.grid(
-    mtry       = 1:4,
+    mtry       = 1:(min(length(all_covariates_use), 4)),
     node_size  = 1:4,
     num.trees = seq(100, 500, 100),
     OOB_RMSE   = 0
   )
   
-  #Select covariates
-  updated_row_use <- possible_combinations[row, ]
-  all_covariates_use <- as.character(na.omit(unlist(sapply(1:ncol(covariate_categories), function(x) covariate_categories[, x], simplify = FALSE)[which(updated_row_use %in% 1)])))
   
   for(i in 1:nrow(hyper_grid)) {
     print(i)
@@ -59,6 +60,7 @@ all_rows_run <- sapply(1:nrow(possible_combinations), function(row){
   position = which.min(hyper_grid$OOB_RMSE)
   
   write.csv(data.frame(row = row, hyper_grid),
-            paste0("output/rf_tune/row_", row, "_results"))
+            paste0("output/rf_tune/row_", row, "rf_tuning_results.csv"),
+            row.names = FALSE)
   
 }, simplify = FALSE)

@@ -9,7 +9,6 @@ library(plyr)
 library(pdp)
 library(ggplot2)
 library(tidyr)
-library(mlr)
 
 set.seed(1)
 
@@ -27,10 +26,18 @@ for(i in names(model_run_data)[grepl("plant|harvest", names(model_run_data))]){
   model_run_data[, i]<-as.factor(model_run_data[, i])
 }
 
+#All tuned values
+rf_tuned <- do.call(rbind, sapply(list.files("output/rf_tune/", full.names = TRUE), function(x) read.csv(x, stringsAsFactors = FALSE), simplify = FALSE))
+row.names(rf_tuned) <- NULL
+
 #Run for all rows
 all_rows_run <- sapply(1:nrow(possible_combinations), function(row){
   
   print(row)
+  
+  #Which tune parameters
+  rf_tuned_row <- rf_tuned[which(rf_tuned$row == row), ]
+  best_row_param <- rf_tuned_row[which.min(rf_tuned_row$OOB_RMSE), ]
   
   #Select covariates
   updated_row_use <- possible_combinations[row, ]
@@ -39,7 +46,8 @@ all_rows_run <- sapply(1:nrow(possible_combinations), function(row){
   #Run model
   #In report_classify, 1 = human report, 2 = NHP report,  3 = both
   model_run <- ranger(as.formula("report_classify ~."), data = model_run_data[, c("report_classify", gsub(" |-", ".", all_covariates_use))], 
-          num.trees = 800, importance = "permutation", classification = T, probability = T)
+          num.trees = 400, mtry = best_row_param$mtry, min.node.size = best_row_param$node_size,
+          importance = "permutation", classification = T, probability = T)
   
   #Extract predictions
   all_predictions <- as.data.frame(model_run$predictions)
