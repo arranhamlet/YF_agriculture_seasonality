@@ -10,6 +10,7 @@ library(pdp)
 library(ggplot2)
 library(tidyverse)
 library(Hmisc)
+library(ggpubr)
 
 #Set up possible combinations of covariates
 possible_combinations <- expand.grid(agro_cols = 0:1, host_cols = 0:1, agro_seas = 0:1, climate_cols = 0:1, stringsAsFactors = FALSE)
@@ -51,7 +52,6 @@ data_monthly <- data.frame(row = "data",
                                           colSums(matrix(model_run_data$both_report, ncol = 12, byrow = T))))
 
 
-
 variable_importance <- read.csv("output/variable_importance_all.csv", stringsAsFactors = FALSE)
 
 
@@ -70,28 +70,52 @@ ggplot(data = in_sample_results, aes(x = row, y = mid_auc, fill = type)) +
 
 
 #Plot predictions
-data_prediction_combined <- rbind(predictions_monthly, data_monthly)
+data_monthly$type <- factor(as.character(data_monthly$type), levels = levels(predictions_monthly$type))
+data_monthly <- data_monthly[order(data_monthly$type), ]
+
+
+data_prediction_combined <- rbind(predictions_monthly[order(predictions_monthly$type), ], data_monthly)
 
 for(i in 1:15){
   data_prediction_combined[which(data_prediction_combined$row == i), ]$row <- gsub(i, all_row_ID[as.numeric(i)], data_prediction_combined[which(data_prediction_combined$row == i), ]$row)
 }
 
 data_prediction_combined$row <- factor(data_prediction_combined$row, levels = unique(data_prediction_combined$row))
-
 data_prediction_combined$pred_difference <- NA
 
 for(i in all_row_ID){
-  data_prediction_combined$pred_difference[which(data_prediction_combined$row == i)] <- data_prediction_combined$prediction[which(data_prediction_combined$row == i)] - subset(data_prediction_combined, row == "data")$prediction
+  data_prediction_combined[which(data_prediction_combined$row == i), ]$pred_difference <- data_prediction_combined[which(data_prediction_combined$row == i), ]$prediction - subset(data_prediction_combined, row == "data")$prediction
 }
 
 
-ggplot(data = subset(data_prediction_combined, row %in% c(best_both_seasonal, best_agri_seasonal, best_climate_seasonal))) + 
-  geom_bar(aes(x = month, y = prediction, fill = type), stat = "identity", position = position_dodge(width = 0.8)) +
-  facet_wrap(~row) + theme_minimal() 
+data_prediction_combined$facet_wrap_1 <- data_prediction_combined$type
+data_prediction_combined$facet_wrap_2 <- data_prediction_combined$type
 
-ggplot(data = subset(data_prediction_combined, row %in% c(best_both_seasonal, best_agri_seasonal, best_climate_seasonal))) + 
+
+data_prediction_combined$facet_wrap_1 <- gsub("human", "A",
+                                              gsub("NHP", "B",
+                                                   gsub("both", "C", data_prediction_combined$facet_wrap_1)))
+data_prediction_combined$facet_wrap_2 <- gsub("human", "D",
+                                              gsub("NHP", "E",
+                                                   gsub("both", "F", data_prediction_combined$facet_wrap_2)))
+
+
+raw_data <- ggplot(data = subset(data_prediction_combined, row %in% c(best_both_seasonal, best_agri_seasonal, best_climate_seasonal))) + 
+  geom_bar(aes(x = month, y = prediction, fill = row), stat = "identity", position = position_dodge(width = 0.8), alpha = 1) +
+  facet_wrap(~facet_wrap_1) + theme_minimal() +
+  geom_bar(data = subset(data_prediction_combined, row == "data"), aes(x = month, y = prediction, group = type), color = "black",
+           stat = "identity", alpha = 1, fill = NA, size = 1) +
+  theme(strip.text.x = element_text(hjust = -0.01, size = 10)) + labs(x = "", y = "Sum of predictions\nin a month", fill = "Row")
+  
+diff_data <- ggplot(data = subset(data_prediction_combined, row %in% c(best_both_seasonal, best_agri_seasonal, best_climate_seasonal))) + 
   geom_bar(aes(x = month, y = pred_difference, fill = row, group = row), stat = "identity", position = position_dodge(width = 0.8)) +
-  facet_wrap(~type) + theme_minimal()
+  facet_wrap(~facet_wrap_2) + theme_minimal() +
+  theme(strip.text.x = element_text(hjust = -0.01, size = 10)) + labs(x = "Month", y = "Difference between\npredictions and data", fill = "Row")
+
+diff_predictions <- ggarrange(raw_data, diff_data, ncol = 1, common.legend = T, legend = "bottom", align = "v")
+
+ggsave("figures/Figure_3.png", diff_predictions, width = 10, height = 6, dpi = 400)
+
 
 data_prediction_combined$pred_difference_abs <- abs(data_prediction_combined$pred_difference)
 
@@ -101,6 +125,33 @@ data_difference <- aggregate(x = list(difference = data_prediction_combined$pred
           FUN = sum)
 
 total_diff_agg <- subset(data_difference, row %in% c(best_both_seasonal, best_agri_seasonal, best_climate_seasonal))
+
+write.csv(data.frame(covariate_groupings = c("OHA", "OHC", "OHAC"),
+                     Human = subset(total_diff_agg, type == "human")$difference,
+                     NHP = subset(total_diff_agg, type == "NHP")$difference,
+                     Both = subset(total_diff_agg, type == "both")$difference,
+                     stringsAsFactors = FALSE),
+          file = "output/Table_3.csv", row.names = FALSE)
+
+
+
+monthly_correlation <- do.call(rbind, sapply(c(best_agri_seasonal, best_climate_seasonal, best_both_seasonal), function(x){
+  
+  data.frame(
+    row = x,
+  human_cor = cor(subset(data_prediction_combined, row == "data" & type == "human")$prediction, 
+                  subset(data_prediction_combined, row == x & type == "human")$prediction),
+  NHP_cor = cor(subset(data_prediction_combined, row == "data" & type == "NHP")$prediction, 
+                subset(data_prediction_combined, row == x & type == "NHP")$prediction),
+  both_cor = cor(subset(data_prediction_combined, row == "data" & type == "both")$prediction, 
+                 subset(data_prediction_combined, row == x & type == "both")$prediction)
+  )
+  
+}, simplify = FALSE))
+
+write.csv(monthly_correlation, file = "output/Table_4.csv", row.names = FALSE)
+
+
 
 
 
