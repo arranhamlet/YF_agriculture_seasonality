@@ -34,7 +34,7 @@ model_run_data$both_report <- rowSums(model_run_data[, c("human_report", "NHP_re
 model_run_data$both_report[which(model_run_data$both_report != 2)] <- 0
 model_run_data$both_report[which(model_run_data$both_report == 2)] <- 1
 
-n_runs = 2
+n_runs = 200
 
 #Run for all rows
 all_rows_run <- sapply(1:nrow(possible_combinations), function(row){
