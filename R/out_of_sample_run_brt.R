@@ -34,7 +34,7 @@ model_run_data$both_report <- rowSums(model_run_data[, c("human_report", "NHP_re
 model_run_data$both_report[which(model_run_data$both_report != 2)] <- 0
 model_run_data$both_report[which(model_run_data$both_report == 2)] <- 1
 
-n_runs = 200
+n_runs <- 200
 
 #Run for all rows
 all_rows_run <- sapply(1:nrow(possible_combinations), function(row){
@@ -76,22 +76,22 @@ all_rows_run <- sapply(1:nrow(possible_combinations), function(row){
                                 n.trees = 500,
                                 keep.data = T)
     
-    model_run_NHP <- gbm::gbm(data = train_df, 
+    model_run_NHP <- gbm::gbm(data = train_df[, c("NHP_report", gsub(" |-", ".", all_covariates_use))], 
                               formula = as.formula(paste0("NHP_report ~ ", paste(gsub(" |-", ".", all_covariates_use), collapse = " + "))),
                               distribution = "bernoulli", 
                               bag.fraction = 0.65, 
                               n.trees = 500)
     
-    model_run_both <- gbm::gbm(data = train_df, 
+    model_run_both <- gbm::gbm(data = train_df[, c("both_report", gsub(" |-", ".", all_covariates_use))], 
                                formula = as.formula(paste0("both_report ~ ", paste(gsub(" |-", ".", all_covariates_use), collapse = " + "))),
                                distribution = "bernoulli", 
                                bag.fraction = 0.65, 
                                n.trees = 500)
     
     #Extract predictions
-    all_predictions <- data.frame(human = predict(model_run_human, newdata = predict_df, type = "response"),
-                                  NHP = predict(model_run_NHP, newdata = predict_df, type = "response"),
-                                  both = predict(model_run_both, newdata = predict_df, type = "response"),
+    all_predictions <- data.frame(human = predict(model_run_human, newdata = predict_df, type = "response", n.trees = 500),
+                                  NHP = predict(model_run_NHP, newdata = predict_df, type = "response", n.trees = 500),
+                                  both = predict(model_run_both, newdata = predict_df, type = "response", n.trees = 500),
                                   stringsAsFactors = FALSE)
     
     all_data_classify <- data.frame(human = predict_df$human_report,
@@ -100,64 +100,39 @@ all_rows_run <- sapply(1:nrow(possible_combinations), function(row){
                                     stringsAsFactors = FALSE)
     
     all_in_sample_auc <- do.call(rbind, sapply(colnames(all_data_classify), function(x){
-      
-      as.numeric(ci.auc(all_data_classify[, x], all_predictions[, x]))
-      
+      as.numeric(suppressWarnings(ci.auc(all_data_classify[, x], all_predictions[, x], quiet = T)))
     }, simplify = FALSE))
     
     colnames(all_in_sample_auc) <- c("low_auc", "mid_auc", "high_auc")
     
-    list(df = data.frame(row = row, run = x, updated_row_use, data.frame(type = row.names(all_in_sample_auc), 
-                                                                all_in_sample_auc,
-                                                                stringsAsFactors = FALSE), stringsAsFactors = FALSE),
-         predictions = data.frame(row = row, run = x, all_predictions, stringsAsFactors = FALSE),
-         variable_importance = data.frame(row = row, run = x, updated_row_use, rbind(data.frame(type = "human", summary(model_run_human)),
-                                                                            data.frame(type = "NHP", summary(model_run_NHP)),
-                                                                            data.frame(type = "both", summary(model_run_both))), stringsAsFactors = FALSE))
+    list(df = suppressWarnings(data.frame(row = row, run = x, updated_row_use, data.frame(type = row.names(all_in_sample_auc), 
+                                                                                          all_in_sample_auc,
+                                                                                          stringsAsFactors = FALSE), stringsAsFactors = FALSE)),
+                          predictions = data.frame(row = row, run = x, all_predictions, stringsAsFactors = FALSE),
+                          variable_importance = suppressWarnings(data.frame(row = row, run = x, updated_row_use, rbind(data.frame(type = "human", summary(model_run_human)),
+                                                                                                                data.frame(type = "NHP", summary(model_run_NHP)),
+                                                                                                                data.frame(type = "both", summary(model_run_both))), stringsAsFactors = FALSE)))
+    
   }, simplify = FALSE)
   
   df_outcome <- do.call(rbind, sapply(1:length(all_runs_done), function(t) all_runs_done[[t]][[1]], simplify = FALSE))
-  df_predictions <- do.call(rbind, sapply(1:length(all_runs_done), function(t){
-    here <- all_runs_done[[t]][[2]]
-    here$location <- 1:nrow(here)
-    here
-  }, simplify = FALSE))
-  df_variable_importance <- do.call(rbind, sapply(1:length(all_runs_done), function(t) all_runs_done[[t]][[3]], simplify = FALSE))
   
-  write.csv(df_outcome, paste0("output/out_of_sample/brt_oos_value_row_", row, "_", n_runs, "_runs.csv"), row.names = FALSE)
+  agg_df_outcome <- aggregate(x = df_outcome[, c("low_auc", "mid_auc", "high_auc")],
+                             by = list(row = df_outcome$row,
+                                       agro_cols = df_outcome$agro_cols,
+                                       host_cols = df_outcome$host_cols,
+                                       agro_seas = df_outcome$agro_seas,
+                                       climate_cols = df_outcome$climate_cols,
+                                       type = df_outcome$type),
+                             FUN = mean)
   
-  list(agg_df_outcome = aggregate(x = df_outcome[, c("low_auc", "mid_auc", "high_auc")],
-                                  by = list(row = df_outcome$row,
-                                            agro_cols = df_outcome$agro_cols,
-                                            host_cols = df_outcome$host_cols,
-                                            agro_seas = df_outcome$agro_seas,
-                                            climate_cols = df_outcome$climate_cols,
-                                            type = df_outcome$type),
-                                  FUN = mean),
-       agg_df_predictions = aggregate(x = df_predictions[, c("human", "NHP", "both")],
-                                      by = list(row = df_predictions$row,
-                                                location = df_predictions$location),
-                                      FUN = mean),
-       aggregate(x = list(rel.inf = df_variable_importance$rel.inf),
-                 by = list(row = df_variable_importance$row,
-                           agro_cols = df_variable_importance$agro_cols,
-                           host_cols = df_variable_importance$host_cols,
-                           agro_seas = df_variable_importance$agro_seas,
-                           climate_cols = df_variable_importance$climate_cols,
-                           type = df_variable_importance$type,
-                           var = df_variable_importance$var),
-                 FUN = mean))
+  agg_df_outcome$runs <- n_runs
+  
+  fwrite(agg_df_outcome, paste0("output/row_", row, "_brt_out_sample_dataframe_all.csv"), row.names = FALSE)
   
 }, simplify = FALSE)
 
-dataframe_all <- do.call(rbind, sapply(1:length(all_rows_run), function(x) all_rows_run[[x]][[1]], simplify = FALSE))
-predictions_all <- do.call(rbind, sapply(1:length(all_rows_run), function(x) all_rows_run[[x]][[2]], simplify = FALSE))
-variable_importance_all <- do.call(rbind.fill, sapply(1:length(all_rows_run), function(x) all_rows_run[[x]][[3]], simplify = FALSE))
 
-predictions_all$month <- model_run_data$month
 
-fwrite(dataframe_all, "output/brt_out_sample_dataframe_all.csv", row.names = FALSE)
-fwrite(predictions_all, "output/brt_out_predictions_all.csv", row.names = FALSE)
-fwrite(variable_importance_all, "output/brt_out_variable_importance_all.csv", row.names = FALSE)
 
 
