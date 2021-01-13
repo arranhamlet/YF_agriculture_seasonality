@@ -134,5 +134,30 @@ all_rows_run <- sapply(1:nrow(possible_combinations), function(row){
 
 
 
+all_brt_oos <- list.files("Y:/Arran/PhD/Brazil_PAHO/Brazil_2019/natt_comms_agriculture/YF_agriculture_seasonality/output", "brt_out_sample", full.names = T)
+all_brt_load <- do.call(rbind, sapply(all_brt_oos, function(x) read.csv(x, stringsAsFactors = FALSE), simplify = FALSE))
+
+row.names(all_brt_load) <- NULL
+all_brt_load$row <- factor(all_brt_load$row, levels = 1:15)
+
+
+ggplot(data = all_brt_load) + geom_point(aes(x = row, y = mid_auc, color = factor(agro_seas))) +
+  theme_minimal() + labs(x = "Row", y = "Out of sample AUC", fill = "Agriculture seasonality") +
+  facet_wrap(~type)
+  
+  
+  
+  
+all_brt_load[which(all_brt_load$agro_seas == 1 & all_brt_load$climate_cols == 0), ]$mid_auc -
+all_brt_load[which(all_brt_load$agro_seas == 0 & all_brt_load$climate_cols == 1), ]$mid_auc
+
+  
+  
+  
+  
+  
+  
+  
+
 
 
