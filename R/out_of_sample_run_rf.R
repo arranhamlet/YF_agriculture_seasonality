@@ -69,35 +69,32 @@ all_rows_run <- sapply(1:nrow(possible_combinations), function(row){
     train_df<-do.call(rbind, sapply(1:length(train_pred_df_build), function(a) train_pred_df_build[[a]][[2]], simplify = FALSE))
     predict_df<-do.call(rbind, sapply(1:length(train_pred_df_build), function(a) train_pred_df_build[[a]][[1]], simplify = FALSE))
     
-    model_run_human <- gbm::gbm(data = train_df[, c("human_report", gsub(" |-", ".", all_covariates_use))], 
-                                formula = as.formula(paste0("human_report ~ ", paste(gsub(" |-", ".", all_covariates_use), collapse = " + "))),
-                                distribution = "bernoulli", 
-                                bag.fraction = 0.65, 
-                                n.trees = 500,
-                                keep.data = T)
+    train_model <- ranger(as.formula("report_classify ~."), data = train_df[, c("report_classify", gsub(" |-", ".", all_covariates_use))], 
+                          num.trees = 800, importance = "permutation", classification = T, probability = T)
     
-    model_run_NHP <- gbm::gbm(data = train_df[, c("NHP_report", gsub(" |-", ".", all_covariates_use))], 
-                              formula = as.formula(paste0("NHP_report ~ ", paste(gsub(" |-", ".", all_covariates_use), collapse = " + "))),
-                              distribution = "bernoulli", 
-                              bag.fraction = 0.65, 
-                              n.trees = 500)
-    
-    model_run_both <- gbm::gbm(data = train_df[, c("both_report", gsub(" |-", ".", all_covariates_use))], 
-                               formula = as.formula(paste0("both_report ~ ", paste(gsub(" |-", ".", all_covariates_use), collapse = " + "))),
-                               distribution = "bernoulli", 
-                               bag.fraction = 0.65, 
-                               n.trees = 500)
     
     #Extract predictions
-    all_predictions <- data.frame(human = predict(model_run_human, newdata = predict_df, type = "response", n.trees = 500),
-                                  NHP = predict(model_run_NHP, newdata = predict_df, type = "response", n.trees = 500),
-                                  both = predict(model_run_both, newdata = predict_df, type = "response", n.trees = 500),
-                                  stringsAsFactors = FALSE)
-    
-    all_data_classify <- data.frame(human = predict_df$human_report,
-                                    NHP = predict_df$NHP_report,
-                                    both = predict_df$both_report,
+    all_predictions_raw <- predict(train_model, data = predict_df, type = "response")$predictions
+    all_predictions <- data.frame(human = all_predictions_raw[, 2],
+                                    NHP = all_predictions_raw[, 4],
+                                    both = all_predictions_raw[, 3],
                                     stringsAsFactors = FALSE)
+    
+    
+    human_yes <- as.numeric(as.character(predict_df$report_classify))
+    human_yes[human_yes != 1] <- 0
+    
+    NHP_yes <- as.numeric(as.character(predict_df$report_classify))
+    NHP_yes[NHP_yes != 2] <- 0
+    NHP_yes[NHP_yes == 2] <- 1
+    
+    both_yes <- as.numeric(as.character(predict_df$report_classify))
+    both_yes[both_yes != 3] <- 0
+    both_yes[both_yes == 3] <- 1
+    
+    all_data_classify <- data.frame(human = human_yes,
+                                    NHP = NHP_yes,
+                                    both = both_yes)
     
     all_in_sample_auc <- do.call(rbind, sapply(colnames(all_data_classify), function(x){
       as.numeric(suppressWarnings(ci.auc(all_data_classify[, x], all_predictions[, x], quiet = T)))
@@ -110,31 +107,27 @@ all_rows_run <- sapply(1:nrow(possible_combinations), function(row){
     }, simplify = FALSE))
     
     list(df = suppressWarnings(data.frame(row = row, run = x, updated_row_use, data.frame(type = row.names(all_in_sample_auc),
-                                                                                          brier_score = sum(brier_scores),
+                                                                                          brier_score = brier_scores,
                                                                                           total_brier_score = sum(brier_scores),
                                                                                           all_in_sample_auc,
-                                                                                          stringsAsFactors = FALSE), stringsAsFactors = FALSE)),
-                          predictions = data.frame(row = row, run = x, all_predictions, stringsAsFactors = FALSE),
-                          variable_importance = suppressWarnings(data.frame(row = row, run = x, updated_row_use, rbind(data.frame(type = "human", summary(model_run_human)),
-                                                                                                                data.frame(type = "NHP", summary(model_run_NHP)),
-                                                                                                                data.frame(type = "both", summary(model_run_both))), stringsAsFactors = FALSE)))
+                                                                                          stringsAsFactors = FALSE), stringsAsFactors = FALSE)))
     
   }, simplify = FALSE)
   
   df_outcome <- do.call(rbind, sapply(1:length(all_runs_done), function(t) all_runs_done[[t]][[1]], simplify = FALSE))
   
   agg_df_outcome <- aggregate(x = df_outcome[, c("low_auc", "mid_auc", "high_auc", "brier_score", "total_brier_score")],
-                             by = list(row = df_outcome$row,
-                                       agro_cols = df_outcome$agro_cols,
-                                       host_cols = df_outcome$host_cols,
-                                       agro_seas = df_outcome$agro_seas,
-                                       climate_cols = df_outcome$climate_cols,
-                                       type = df_outcome$type),
-                             FUN = mean)
+                              by = list(row = df_outcome$row,
+                                        agro_cols = df_outcome$agro_cols,
+                                        host_cols = df_outcome$host_cols,
+                                        agro_seas = df_outcome$agro_seas,
+                                        climate_cols = df_outcome$climate_cols,
+                                        type = df_outcome$type),
+                              FUN = mean)
   
   agg_df_outcome$runs <- n_runs
   
-  fwrite(agg_df_outcome, paste0("output/out_of_sample/row_", row, "_brt_out_sample_dataframe_all.csv"), row.names = FALSE)
+  fwrite(agg_df_outcome, paste0("output/out_of_sample/row_", row, "_rf_out_sample_dataframe_all.csv"), row.names = FALSE)
   
 }, simplify = FALSE)
 

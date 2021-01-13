@@ -1,0 +1,96 @@
+library(data.table)
+library(ranger)
+library(pROC)
+library(rgdal)
+library(maptools)
+library(raster)
+library(rgeos)
+library(plyr)
+library(pdp)
+library(ggplot2)
+library(tidyr)
+library(dismo)
+library(gbm)
+library(tidyverse)
+library(Hmisc)
+
+all_brt_oos <- list.files("output/out_of_sample", "brt_out_sample", full.names = T)
+all_brt_load <- do.call(rbind, sapply(all_brt_oos, function(x) read.csv(x, stringsAsFactors = FALSE), simplify = FALSE))
+
+row.names(all_brt_load) <- NULL
+all_brt_load$row <- factor(all_brt_load$row, levels = 1:15)
+
+key <- all_brt_load[, c("row", "agro_cols", "host_cols", "agro_seas", "climate_cols")]
+
+if(any(colnames(all_brt_load) == "runs")) all_brt_load <- all_brt_load[, c("type", "row", "low_auc", "mid_auc", "high_auc")]
+
+
+all_rf_oos <- list.files("output/out_of_sample", "oos", full.names = T)
+all_rf_load <- do.call(rbind, sapply(all_rf_oos, function(x) read.csv(x, stringsAsFactors = FALSE), simplify = FALSE))
+
+row.names(all_rf_load) <- NULL
+all_rf_load$row <- factor(all_rf_load$row, levels = 1:15)
+colnames(all_rf_load) <- c("type", "row", "low_auc", "mid_auc", "high_auc")
+
+all_rf_load$method <- "Random forest"
+all_brt_load$method <- "Boosted regression tree"
+
+all_type <- rbind(all_rf_load, all_brt_load)
+if(any(all_type$type == "none")) all_type <- all_type[-which(all_type$type == "none"), ]
+
+all_type <- left_join(all_type, key, by = "row")
+all_type$agro_or_climate <- sapply(1:nrow(all_type), function(x){
+  if(all_type$climate_cols[x] == 0 & all_type$agro_seas[x] == 1){
+    "Agricultural seasonality"
+  } else if(all_type$climate_cols[x] == 1 & all_type$agro_seas[x] == 0){
+    "Climate seasonality"
+  } else if(all_type$climate_cols[x] == 1 & all_type$agro_seas[x] == 1){
+    "Both"
+  } else if(all_type$climate_cols[x] == 0 & all_type$agro_seas[x] == 0){
+    "Neither"
+  }
+})
+
+all_type$agro_or_climate_method <- paste0(all_type$agro_or_climate, "_", all_type$method)
+all_type$type <- factor(capitalize(all_type$type), levels = c("Human", "NHP", "Both"))
+all_type$agro_or_climate <- factor(all_type$agro_or_climate, levels = c("Agricultural seasonality", "Climate seasonality", "Both", "Neither"))
+if(any(duplicated(all_type))) all_type <- all_type[!duplicated(all_type), ]
+
+
+all_type$rank_method_type <- NA
+for(x in unique(all_type$method)){
+  for(y in unique(all_type$type)){
+    all_type[which(all_type$method == x & all_type$type == y), ]$rank_method_type <- rank(all_type[which(all_type$method == x & all_type$type == y), ]$mid_auc)
+  }
+}
+
+
+ggplot(data = all_type) + 
+  geom_point(aes(x = row, y = mid_auc, col = method)) + 
+  geom_errorbar(aes(x = row, ymin = low_auc, ymax = high_auc, col = method)) + 
+  theme_minimal() + 
+  labs(x = "Row", y = "AUC") +
+  facet_wrap(~type)
+
+ggplot(data = all_type) +
+  geom_boxplot(aes(x = agro_or_climate, y = mid_auc, group = agro_or_climate_method, fill = method)) +
+  facet_wrap(~type) +
+  theme_minimal() +
+  labs(x = "", y = "AUC", fill = "Method")
+  
+ggplot(data = all_type) + 
+  geom_point(aes(x = row, y = rank_method_type, color = agro_or_climate, shape = method)) + 
+  facet_wrap(~type) + 
+  theme_minimal() + 
+  labs(x = "Row", y = "Rank (higher = better)", color = "Covariates", shape = "Method") +
+  theme(legend.position = "bottom") + guides(color = guide_legend(nrow = 2, byrow = TRUE, title.position = "top"),
+                                             shape = guide_legend(nrow = 2, byrow = TRUE, title.position = "top"))
+
+
+
+
+
+
+
+
+

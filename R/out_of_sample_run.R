@@ -90,8 +90,21 @@ all_rows_run <- sapply(1:n_rows, function(row){
     
     auc_df <- matrix(c(no_auc, human_auc, NHP_auc, any_auc), ncol = 3, byrow = T)
     
+    
+    human_brier <- as.numeric(ci.brier(human_yes, predictions$predictions[, 2]))
+    NHP_brier <- as.numeric(ci.brier(NHP_yes, predictions$predictions[, 4]))
+    any_brier <- as.numeric(ci.brier(both_yes, predictions$predictions[, 3]))
+    
+    brier_df <- matrix(c(no_brier, human_brier, NHP_brier, any_brier), ncol = 3, byrow = T)
+    
+    
+    brier_scores <- do.call(rbind, sapply(colnames(all_data_classify), function(x){
+      mean((all_predictions[, x] - all_data_classify[, x])^2)
+    }, simplify = FALSE))
+    
     output_df <- data.frame(classification = c("none", "human", "NHP", "both"),
                             run = x,
+                            brier_score = sum(brier_scores),
                             auc_df, stringsAsFactors = F)
     colnames(output_df) <- c("classification", "run", "auc_lo", "auc_mid", "auc_hi")
     
